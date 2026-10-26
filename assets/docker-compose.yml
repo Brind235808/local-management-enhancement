@@ -1,0 +1,111 @@
+name: local-management-enhancement
+
+services:
+  # ComfyUI is only on the internal ai-net. The agent container cannot resolve it.
+  comfyui:
+    image: ${COMFYUI_IMAGE:-ghcr.io/ai-dock/comfyui:latest-cuda}
+    restart: unless-stopped
+    environment:
+      # Keep prompt/workflow metadata so the user can reproduce images. The
+      # gateway archive is private and is never mounted into the agent box.
+      # Add --disable-metadata only if you never need reproducibility.
+      - COMFYUI_ARGS=--listen 0.0.0.0 --port 8188
+    volumes:
+      - ${COMFYUI_MODELS_DIR:-../models}:/workspace/ComfyUI/models
+      - comfy-output:/workspace/ComfyUI/output
+      - comfy-input:/workspace/ComfyUI/input
+    networks:
+      - ai-net
+    # GPU hosts: add the deploy block below (or use a GPU override file).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Optional local LLM. It shares only llm-net with the agent, not ai-net.
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - llm-net
+
+  # The only component attached to both the ComfyUI network and the agent network.
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command:
+      - http
+      - --config
+      - /data/config/gateway.docker.json
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+    user: "${GATEWAY_UID:-1000}:${GATEWAY_GID:-1000}"
+    environment:
+      - IMAGE_GATEWAY_TOKEN=${IMAGE_GATEWAY_TOKEN}
+    volumes:
+      - ../archive:/data/archive
+      - ../config:/data/config:ro
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-18765}:8765"
+    networks:
+      - ai-net
+      - agent-net
+    depends_on:
+      - comfyui
+
+  # Optional CLI-agent box. It never mounts the private archive or host home.
+  agent:
+    profiles:
+      - agent
+    build:
+      context: ../agentbox
+      dockerfile: Dockerfile
+      args:
+        AGENT_NPM_PACKAGES: ${AGENT_NPM_PACKAGES:-@openai/codex}
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    working_dir: /workspace
+    environment:
+      - IMAGE_GATEWAY_URL=http://gateway:8765
+      - IMAGE_GATEWAY_TOKEN=${IMAGE_GATEWAY_TOKEN}
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ../../session:/workspace
+      - ../gateway:/opt/image-gateway:ro
+      - agent-home:/home/node
+    networks:
+      - agent-net
+      - llm-net
+      - egress-net
+    command:
+      - sleep
+      - infinity
+
+networks:
+  # ComfyUI and gateway only. No internet and no agent.
+  ai-net:
+    internal: true
+  # Agent, gateway, and Ollama only. No ComfyUI and no internet.
+  agent-net:
+    internal: true
+  # Agent and Ollama only. No ComfyUI.
+  llm-net:
+    internal: true
+  # Agent-only egress for cloud LLM APIs and package installs.
+  egress-net: {}
+
+volumes:
+  comfy-output:
+  comfy-input:
+  ollama-models:
+  agent-home:

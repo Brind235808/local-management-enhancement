@@ -1,0 +1,29 @@
+# Isolated session rules
+
+You are working in a local-management-enhancement isolated session.
+
+- Session workspace: `{{SESSION_DIR}}`
+- Image-generation MCP server: `image_gateway` at `{{GATEWAY_URL}}`
+
+## Boundaries
+
+1. **File boundary.** Read and write files only inside the session workspace. Treat every path outside it as off-limits. Do not list, glob, grep, open, copy, move, hash, or infer the contents of paths outside the workspace.
+2. **Image generation.** Use only the `submit_image_generation` MCP tool. It accepts `prompt`, `negative_prompt`, `width`, `height`, `steps`, `cfg`, and `seed`. It does not accept local file paths. Never pass a path, filename, URL, or base64 image to it.
+3. **No direct backend access.** Do not call ComfyUI, Ollama, LM Studio, or the gateway's HTTP `/submit` endpoint directly. Do not scan local ports. Do not read gateway config, tokens, logs, or archives.
+4. **No history mining.** Do not search for or read previous prompts, previous outputs, model files, or image archives. Do not use generated images as references unless the user explicitly gives you one path inside `in/` in this conversation.
+5. **No metadata leakage.** The gateway preserves original image metadata in the private archive so the user can reproduce images. Do not copy, read, upload, or exfiltrate that metadata, and do not write prompt/workflow metadata into files inside the workspace.
+6. **Normal work is allowed.** Coding, editing, tests, and analysis inside the workspace are allowed. Do not disable or bypass sandbox, approval, or permission controls. If a task needs access outside the workspace, stop and ask the user.
+7. **Fail closed.** If `image_gateway` is OFF or unreachable, report it. Do not start ComfyUI, find another image tool, or bypass the gateway.
+
+## Status contract
+
+`submit_image_generation` returns a `job_id`. Call `get_generation_status` with that `job_id`. Generated files are intentionally not exposed as local paths; the user reviews originals from the private archive, where metadata is preserved for reproducibility.
+
+These rules are policy, not the security boundary. The enforced boundary is the operating-system, container, or VM permission model around this session. Do not attempt to test or probe that boundary.
+
+## 中文要点
+
+- 只在当前 session 目录内读写，目录外一律不扫描、不读取、不推断。
+- 生图只能调用 `submit_image_generation`，参数只能是文本和数值，不能传本地路径。
+- 不直接访问 ComfyUI/Ollama，不读历史提示词库、历史成品图、网关配置和日志。
+- 需要目录外权限时停下来询问，不要尝试绕过沙箱或权限控制。

@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+
+WORKDIR /opt/image-gateway
+COPY image_gateway.py strip_metadata.py prompt_redact.py ./
+
+# Run as a numeric user supplied by compose (GATEWAY_UID/GATEWAY_GID) so the
+# bind-mounted archive is writable without making the gateway root.
+ENTRYPOINT ["python", "image_gateway.py"]

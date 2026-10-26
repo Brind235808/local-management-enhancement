@@ -1,0 +1,21 @@
+FROM node:22-bookworm-slim
+
+ARG AGENT_NPM_PACKAGES="@openai/codex"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        git \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g ${AGENT_NPM_PACKAGES}
+
+COPY entrypoint.sh /usr/local/bin/agent-entrypoint
+RUN chmod 0555 /usr/local/bin/agent-entrypoint
+
+USER node
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/agent-entrypoint"]
