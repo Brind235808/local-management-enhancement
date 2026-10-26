@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+local-management-runtime/
+scan*.md
+*.local.json
